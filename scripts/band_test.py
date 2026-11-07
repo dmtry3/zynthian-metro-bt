@@ -2,6 +2,7 @@
 """Проверка связи с Mi Band 10 на Pi.
 
     python3 scripts/band_test.py scan                найти браслет и записать его MAC в config/band.json
+    python3 scripts/band_test.py setmac AA:BB:..     записать MAC вручную
     python3 scripts/band_test.py connect             подключиться и пройти авторизацию
     python3 scripts/band_test.py buzz [мс]           одна короткая вибрация (по умолчанию 80 мс)
     python3 scripts/band_test.py beats [BPM] [N]     N вибраций в темпе (по умолчанию 100 BPM, 16 долей)
@@ -39,22 +40,53 @@ def save_config(cfg):
 
 def scan(cfg):
     print("Ищу «%s» 15 секунд (bluetoothctl)…" % cfg.get("name", "Xiaomi Smart Band 10"))
-    out = subprocess.run(["bluetoothctl", "--timeout", "15", "scan", "on"],
-                         capture_output=True, text=True).stdout
-    out += subprocess.run(["bluetoothctl", "devices"], capture_output=True, text=True).stdout
-    found = {}
-    for mac, name in re.findall(r"Device ([0-9A-F:]{17}) (.+)", out):
-        if "Band 10" in name:
-            found[mac] = name.strip()
+    show = run(["bluetoothctl", "show"])
+    if "Controller" not in show:
+        print("Bluetooth-адаптер не найден. Включи Bluetooth в Zynthian (Admin → Bluetooth)")
+        print("или проверь: rfkill list; sudo rfkill unblock bluetooth")
+        return 1
+    if "Powered: yes" not in show:
+        print("Адаптер выключен, включаю: bluetoothctl power on")
+        print(run(["bluetoothctl", "power", "on"]).strip())
+    out = run(["bluetoothctl", "--timeout", "15", "scan", "on"])
+    out += run(["bluetoothctl", "devices"])
+    seen = {}
+    for mac, name in re.findall(r"Device ([0-9A-F:]{17}) ?(.*)", out):
+        name = name.strip()
+        if name and not re.fullmatch(r"[0-9A-F]{2}(-[0-9A-F]{2}){5}", name) or mac not in seen:
+            seen[mac] = name
     hint = cfg.get("mac_hint", "")
-    if hint:
-        found = {m: n for m, n in found.items() if m.endswith(hint)} or found
+    found = {m: n for m, n in seen.items() if "Band" in n or (hint and m.endswith(hint))}
     if not found:
-        print("Браслет не найден. Он должен быть рядом и не подключён к телефону.")
+        print("Браслет не найден. Устройств в эфире: %d" % len(seen))
+        for mac, name in sorted(seen.items()):
+            print("  %s  %s" % (mac, name))
+        print("Проверь: Bluetooth на телефоне выключен, экран браслета включён, браслет рядом с Pi.")
+        print("Если знаешь MAC (Mi Fitness → браслет → О устройстве):")
+        print("  python3 scripts/band_test.py setmac XX:XX:XX:XX:XX:XX")
         return 1
     for mac, name in found.items():
         print("  %s  %s" % (mac, name))
     mac = next(iter(found))
+    cfg["mac"] = mac
+    save_config(cfg)
+    print("Записал MAC %s в %s" % (mac, CONFIG))
+    return 0
+
+
+def run(cmd):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return "ошибка %s: %s\n" % (cmd[0], e)
+    return r.stdout + r.stderr
+
+
+def setmac(cfg, mac):
+    mac = mac.upper()
+    if not re.fullmatch(r"[0-9A-F]{2}(:[0-9A-F]{2}){5}", mac):
+        print("MAC должен выглядеть так: AA:BB:CC:DD:EE:FF")
+        return 1
     cfg["mac"] = mac
     save_config(cfg)
     print("Записал MAC %s в %s" % (mac, CONFIG))
@@ -78,12 +110,14 @@ def main():
     args = [a for a in sys.argv[1:] if a != "-v"]
     logging.basicConfig(level=logging.DEBUG if "-v" in sys.argv else logging.INFO,
                         format="%(asctime)s %(name)s %(levelname)s %(message)s")
-    if not args or args[0] not in ("scan", "connect", "buzz", "beats"):
+    if not args or args[0] not in ("scan", "setmac", "connect", "buzz", "beats"):
         print(__doc__)
         return 1
     cfg = load_config()
     if args[0] == "scan":
         return scan(cfg)
+    if args[0] == "setmac":
+        return setmac(cfg, args[1]) if len(args) > 1 else 1
     try:
         c = connect(cfg)
         if args[0] == "buzz":
