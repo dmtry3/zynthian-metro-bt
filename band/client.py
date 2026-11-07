@@ -2,12 +2,18 @@
 # Работает только на Linux с Bluetooth (на Pi). В WSL2 Bluetooth нет.
 import logging
 import socket
+import struct
 import threading
 import time
 
 from . import protocol as p
 
 log = logging.getLogger("band")
+
+# из <bluetooth/bluetooth.h>: в модуле socket этих констант нет
+SOL_BLUETOOTH = 274
+BT_SECURITY = 4
+BT_SECURITY_MEDIUM = 2  # шифрованный канал, сопряжение без PIN (Just Works)
 
 
 class BandError(Exception):
@@ -33,25 +39,38 @@ class BandClient:
 
     # ---------- подключение ----------
 
+    def _try(self, ch, secure):
+        s = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
+        if secure:
+            # защищённое подключение, как у Android: ядро само запустит сопряжение (bonding),
+            # если его ещё нет. Привязанный браслет без этого отвечает «Connection refused».
+            s.setsockopt(SOL_BLUETOOTH, BT_SECURITY, struct.pack("BB", BT_SECURITY_MEDIUM, 0))
+        s.settimeout(self.timeout if not secure else max(self.timeout, 30.0))
+        try:
+            s.connect((self.mac, ch))
+        except OSError:
+            s.close()
+            raise
+        return s
+
     def connect(self):
         # сначала запомненный канал, при отказе остальные (канал мог смениться)
         channels = list(range(1, 31))
         if self.channel in channels:
             channels.remove(self.channel)
             channels.insert(0, self.channel)
+        # без защиты по всем каналам, потом с защитой по запомненному (или 5, как у Band 10)
+        attempts = [(ch, False) for ch in channels] + [(self.channel or 5, True)]
         last = None
-        for ch in channels:
-            s = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
-            s.settimeout(self.timeout)
+        for ch, secure in attempts:
             try:
-                s.connect((self.mac, ch))
+                s = self._try(ch, secure)
             except OSError as e:
-                s.close()
                 last = e
-                log.debug("канал %d: %s", ch, e)
+                log.debug("канал %d%s: %s", ch, " (защищённое)" if secure else "", e)
                 continue
             self.sock, self.channel = s, ch
-            log.info("подключено к %s, RFCOMM канал %d", self.mac, ch)
+            log.info("подключено к %s, RFCOMM канал %d%s", self.mac, ch, ", защищённое" if secure else "")
             break
         if self.sock is None:
             raise BandError("не удалось подключиться к %s: %s" % (self.mac, last))
