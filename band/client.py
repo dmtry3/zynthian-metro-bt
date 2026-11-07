@@ -1,5 +1,6 @@
 # Подключение к Mi Band 10 по Bluetooth Classic (RFCOMM) и авторизация.
 # Работает только на Linux с Bluetooth (на Pi). В WSL2 Bluetooth нет.
+import errno
 import logging
 import socket
 import struct
@@ -68,6 +69,10 @@ class BandClient:
             except OSError as e:
                 last = e
                 log.debug("канал %d%s: %s", ch, " (защищённое)" if secure else "", e)
+                if e.errno in (errno.EHOSTDOWN, errno.EHOSTUNREACH):
+                    # браслет не отвечает вовсе: другие каналы не помогут
+                    raise BandError("браслет %s не отвечает (%s): он выключен, далеко или занят другим "
+                                    "устройством" % (self.mac, e.strerror))
                 continue
             self.sock, self.channel = s, ch
             log.info("подключено к %s, RFCOMM канал %d%s", self.mac, ch, ", защищённое" if secure else "")
