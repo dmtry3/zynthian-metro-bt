@@ -2,7 +2,7 @@
 
 Метроном Zynthian на браслете Xiaomi Smart Band 10: каждая доля приходит вибрацией.
 
-Статус: этап 2. Проверяем связь с браслетом на Pi. Плагина в цепочке пока нет.
+Статус: этап 3. Связь с браслетом проверена на Pi. Плагин «Metro BT» в цепочке шлёт доли, сервис вибрирует.
 
 ## Как это работает
 Браслет подключается к Pi напрямую по Bluetooth Classic (SPP), как в Gadgetbridge. Нужен ключ браслета (authkey).
@@ -30,9 +30,27 @@ python3 scripts/band_test.py beats 100   # 16 долей в темпе 100 BPM
 ```
 Нужен пакет `python3-cryptography` (в Zynthian обычно уже стоит).
 
-## Тесты протокола (без Bluetooth)
+## Плагин в цепочке
 ```bash
-python3 -m unittest discover -s tests
+cd ~/zynthian-metro-bt && git pull
+sudo ./scripts/install.sh            # сборка плагина + сервис metro-bt (systemd)
+sudo systemctl restart zynthian
+```
+В Zynthian добавь в любую MIDI-цепочку MIDI tool **Metro BT**. Контроллеры:
+- **On**: метроном вкл/выкл. Его можно назначить на кнопку футсвитча через MIDI learn.
+- **Accent**: сильная доля вдвое длиннее.
+- **Pulse ms**: длина вибрации.
+- **Advance ms**: на сколько отправлять долю раньше, чтобы компенсировать задержку Bluetooth.
+
+Транспорт играет: доли идут по сетке Zynthian. Транспорт стоит: свои часы в темпе Zynthian, с сильной доли.
+Пока плагин в цепочке, сервис держит связь с браслетом. Через 10 с после удаления плагина отключается.
+`band_test.py` не сможет подключиться, пока подключён сервис: `sudo systemctl stop metro-bt`.
+
+Лог: `journalctl -u metro-bt -f`. Удаление: `sudo ./scripts/uninstall.sh`.
+
+## Тесты (WSL, без Bluetooth)
+```bash
+./scripts/test.sh
 ```
 
 ## Лицензия

@@ -28,6 +28,7 @@ proto в `GBProtobufGenerator/src/main/proto/xiaomi/`.
 - Данные после авторизации: AES-CTR, IV = ключ (так у Xiaomi). Информация об устройстве в авторизации: AES-CCM, тег 4 байта.
 - Вибрация: команды «вибрируй один раз» нет. Пробуем find-watch (тип 2, подтип 18, `findDevice` 0 = старт, 1 = стоп)
   и свои узоры вибрации (подтипы 46/58/61).
+- На Pi: RFCOMM канал 5, версия SPP 03 00 41. Пользователь `zynthian` не в группе bluetooth: проверки через sudo, сервис от root.
 - Пока браслет подключён к Pi, телефон к нему подключиться не может.
 
 ## Репозиторий
@@ -42,7 +43,8 @@ proto в `GBProtobufGenerator/src/main/proto/xiaomi/`.
 band/      протокол и клиент браслета на Python (без зависимостей от Zynthian)
 scripts/   extract_key.py, band_test.py, install.sh, deploy.sh
 tests/     офлайн-тесты протокола (WSL, без Bluetooth)
-lv2/, src/ LV2-плагин (этап 3)
+lv2/, src/ LV2-плагин «Metro BT»
+test/      тест ядра и плагина на C
 config/    band.json (не в git), band.example.json
 ```
 
@@ -56,11 +58,14 @@ config/    band.json (не в git), band.example.json
 - Общение и документация на русском. Коммиты маленькие, сообщения на русском.
 
 ## Проверка
-- WSL: `python3 -m unittest discover -s tests` (Bluetooth в WSL2 нет, тут только протокол).
+- WSL: `./scripts/test.sh`: протокол и сервис (Python, поддельный браслет), ядро метронома и `.so` на имитации хоста (C).
+- Плагин: URI `urn:metrobt:metro`, бандл `metro_bt.lv2`, имя «Metro BT». Исходники: `src/metro_bt.c` (LV2, очередь, поток UDP),
+  `src/metro_core.c/.h` (когда слать долю, без LV2). Сервис: `band/service.py`, запуск `scripts/metro_bt_service.py`,
+  systemd `metro-bt.service` (ставит `scripts/install.sh`). UDP 127.0.0.1:47801: `alive`, `beat <мс> <акцент>`, `off`, `bye`.
 - Pi: `python3 scripts/band_test.py buzz` подключается к браслету и вибрирует; `latency` меряет задержку.
 
 ## План этапов
-1. Ключ из zip, протокол, офлайн-тесты.
-2. На Pi: подключение, авторизация, вибрация по команде, замер задержки.
+1. Ключ из zip, протокол, офлайн-тесты. ✔
+2. На Pi: подключение, авторизация, вибрация по команде. ✔ (find-watch вибрирует как надо, `beats 100` понравился)
 3. LV2-плагин в цепочке шлёт доли, сервис вибрирует в такт. Контроллер «On» для футсвитча.
 4. Акцент сильной доли, сдвиг задержки, автозапуск, переподключение.
