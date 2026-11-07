@@ -1,0 +1,5 @@
+{
+  "authkey": "32 hex-символа из encryptKey (scripts/extract_key.py заполнит сам)",
+  "mac": "",
+  "rfcomm_channel": null
+}

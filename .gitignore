@@ -1,0 +1,8 @@
+# Логи Mi Fitness и ключ браслета: секреты, в git не класть
+*.zip
+config/band.json
+__pycache__/
+*.pyc
+build/
+build_test/
+scripts/deploy.env
