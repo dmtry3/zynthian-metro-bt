@@ -34,7 +34,11 @@ class BandClient:
     # ---------- подключение ----------
 
     def connect(self):
-        channels = [self.channel] if self.channel else list(range(1, 31))
+        # сначала запомненный канал, при отказе остальные (канал мог смениться)
+        channels = list(range(1, 31))
+        if self.channel in channels:
+            channels.remove(self.channel)
+            channels.insert(0, self.channel)
         last = None
         for ch in channels:
             s = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
