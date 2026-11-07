@@ -118,14 +118,19 @@ static void handle_pos(Metro* M, const LV2_Atom_Object* obj) {
                       M->time_bar, &bar, M->time_bpb, &bpb, 0);
   if (bpm) { double v = numv(M, bpm, M->bpm); if (v >= 20 && v <= 400) M->bpm = v; }
   int nbpb = bpb ? (int)(numv(M, bpb, 4) + 0.5) : M->core.bpb;
-  if (speed) M->rolling = numv(M, speed, 0) != 0;
-  /* транспорт стоит: позиция замерла, идут свои часы в темпе хоста */
+  if (speed) {
+    const int rolling = numv(M, speed, 0) != 0;
+    if (rolling && !M->rolling) M->core.synced = 0;   /* пуск: первая доля сразу, если позиция на доле */
+    if (!rolling && M->rolling && M->core.on) { Ev e = { EV_OFF, 0, 0 }; push(M, e); }   /* стоп: гасим вибрацию */
+    M->rolling = rolling;
+  }
+  /* транспорт стоит: позиция замерла, долей нет */
   if (!M->rolling || !bar || !bb) { if (nbpb >= 1 && nbpb <= 32) M->core.bpb = nbpb; return; }
   metro_locate(&M->core, numv(M, bar, 0) * nbpb + numv(M, bb, 0), nbpb);
 }
 
 static void advance_frames(Metro* M, uint32_t frames) {
-  if (!frames) return;
+  if (!frames || !M->rolling) return;   /* метроном идёт только при запущенном транспорте */
   const double bps = M->bpm / 60.0;
   const double adv = (M->ctl[P_ADVANCE] ? *M->ctl[P_ADVANCE] : 50.0f) / 1000.0 * bps;
   metro_advance(&M->core, frames / M->sr * bps, adv, on_beat, M);
@@ -144,11 +149,6 @@ static void run(LV2_Handle h, uint32_t n) {
 
   /* контроллеры меняются между блоками: переключение обрабатываем в начале блока */
   if (on != M->on_prev) {
-    if (on && !M->rolling) {
-      /* транспорт стоит: свои часы, начинаем сразу с сильной доли */
-      const int b = M->core.bpb;
-      M->core.pos = ceil(M->core.pos / b - 1e-6) * b;
-    }
     metro_set_on(&M->core, on);
     if (!on) { Ev e = { EV_OFF, 0, 0 }; push(M, e); }
     M->on_prev = on;

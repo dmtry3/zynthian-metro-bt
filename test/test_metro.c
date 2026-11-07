@@ -3,6 +3,8 @@
 #include <arpa/inet.h>
 #include <dlfcn.h>
 #include <lv2/atom/atom.h>
+#include <lv2/atom/forge.h>
+#include <lv2/time/time.h>
 #include <lv2/core/lv2.h>
 #include <lv2/urid/urid.h>
 #include <math.h>
@@ -87,6 +89,33 @@ static int recv_all(int s, int ms_total, int* beats, int* accents, int* offs, in
   return 0;
 }
 
+/* Прогнать плагин secs секунд. speed >= 0: в первом блоке time:Position (bar 0, beat 0, 120 BPM, 4/4). */
+static void run_secs(const LV2_Descriptor* d, LV2_Handle h, LV2_Atom_Sequence* in, LV2_Atom_Sequence* out,
+                     uint32_t n, double sr, double secs, int speed) {
+  const int blocks = (int)(secs * sr / n) > 0 ? (int)(secs * sr / n) : 1;
+  for (int i = 0; i < blocks; i++) {
+    LV2_Atom_Forge f;
+    LV2_URID_Map map = { NULL, map_fn };
+    lv2_atom_forge_init(&f, &map);
+    lv2_atom_forge_set_buffer(&f, (uint8_t*)in, sizeof(LV2_Atom_Sequence) + 4096);
+    LV2_Atom_Forge_Frame seq, obj;
+    lv2_atom_forge_sequence_head(&f, &seq, 0);
+    if (i == 0 && speed >= 0) {
+      lv2_atom_forge_frame_time(&f, 0);
+      lv2_atom_forge_object(&f, &obj, 0, map_fn(NULL, LV2_TIME__Position));
+      lv2_atom_forge_key(&f, map_fn(NULL, LV2_TIME__speed));          lv2_atom_forge_float(&f, (float)speed);
+      lv2_atom_forge_key(&f, map_fn(NULL, LV2_TIME__bar));            lv2_atom_forge_long(&f, 0);
+      lv2_atom_forge_key(&f, map_fn(NULL, LV2_TIME__barBeat));        lv2_atom_forge_float(&f, 0);
+      lv2_atom_forge_key(&f, map_fn(NULL, LV2_TIME__beatsPerBar));    lv2_atom_forge_float(&f, 4);
+      lv2_atom_forge_key(&f, map_fn(NULL, LV2_TIME__beatsPerMinute)); lv2_atom_forge_float(&f, 120);
+      lv2_atom_forge_pop(&f, &obj);
+    }
+    lv2_atom_forge_pop(&f, &seq);
+    out->atom.size = 4096;
+    d->run(h, n);
+  }
+}
+
 static void test_plugin(const char* so) {
   void* lib = dlopen(so, RTLD_NOW);
   CHECK(lib != NULL, "dlopen %s: %s", so, dlerror());
@@ -110,23 +139,29 @@ static void test_plugin(const char* so) {
   d->connect_port(h, 0, &on); d->connect_port(h, 1, &accent);
   d->connect_port(h, 2, &pulse); d->connect_port(h, 3, &advance);
   d->connect_port(h, 4, &in); d->connect_port(h, 5, &out);
-  /* пустой вход, транспорт стоит, 120 BPM по умолчанию: 2 доли в секунду. 3 с звука = доли 0..5 */
   const uint32_t n = 256;
-  const int blocks = (int)(3.0 * sr / n);
-  for (int i = 0; i < blocks; i++) {
-    in.seq.atom.type = map_fn(NULL, LV2_ATOM__Sequence);
-    in.seq.atom.size = sizeof(LV2_Atom_Sequence_Body);
-    out.seq.atom.size = sizeof out.pad;
-    d->run(h, n);
-  }
-  on = 0;
-  d->run(h, n);
   int beats = 0, accents = 0, offs = 0, alive = 0;
+  /* транспорт стоит: долей нет, даже если метроном включён */
+  run_secs(d, h, &in.seq, &out.seq, n, sr, 1.0, -1);
+  recv_all(s, 200, &beats, &accents, &offs, &alive);
+  CHECK(beats == 0, "транспорт стоит: ожидал 0 долей, получил %d", beats);
+  CHECK(alive >= 1, "нет alive");
+  /* пуск с начала, 120 BPM: 2 доли в секунду. 3 с = доли 0..5 */
+  run_secs(d, h, &in.seq, &out.seq, n, sr, 3.0, 1);
   recv_all(s, 300, &beats, &accents, &offs, &alive);
   CHECK(beats == 6, "за 3 с при 120 BPM ожидал 6 долей, получил %d", beats);
   CHECK(accents == 2, "ожидал 2 сильные доли (0 и 4), получил %d", accents);
+  /* стоп: off сразу, дальше тишина */
+  beats = 0;
+  run_secs(d, h, &in.seq, &out.seq, n, sr, 1.0, 0);
+  recv_all(s, 200, &beats, &accents, &offs, &alive);
+  CHECK(offs == 1, "стоп транспорта должен прислать off, получил %d", offs);
+  CHECK(beats == 0, "после стопа ожидал 0 долей, получил %d", beats);
+  /* выключение метронома: off */
+  on = 0; offs = 0;
+  run_secs(d, h, &in.seq, &out.seq, n, sr, 0.01, -1);
+  recv_all(s, 300, &beats, &accents, &offs, &alive);
   CHECK(offs == 1, "ожидал off после выключения, получил %d", offs);
-  CHECK(alive >= 1, "нет alive");
   d->cleanup(h);
   offs = 0;
   recv_all(s, 100, &beats, &accents, &offs, &alive);
