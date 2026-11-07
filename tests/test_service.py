@@ -68,7 +68,7 @@ class TestService(unittest.TestCase):
     def test_accent_longer_and_off_interrupts(self):
         self.s._on_message("alive")
         self.wait_connected()
-        self.s._on_message("beat 100 1")  # акцент: 200 мс
+        self.s._on_message("beat 100 1")  # акцент: 300 мс
         time.sleep(0.05)
         self.s._on_message("off")          # прерывает
         time.sleep(0.1)

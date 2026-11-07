@@ -2,7 +2,7 @@
 #
 # Сообщения от плагина:
 #   alive              плагин в цепочке (раз в секунду)
-#   beat <мс> <акцент> доля: вибрация на <мс>, при акценте вдвое длиннее
+#   beat <мс> <акцент> доля: вибрация на <мс>, при акценте в ACCENT_FACTOR раз длиннее
 #   off                метроном выключен: сразу остановить вибрацию
 #   bye                плагин убрали из цепочки
 #
@@ -23,6 +23,7 @@ log = logging.getLogger("metro_bt")
 UDP_PORT = int(os.environ.get("METRO_BT_PORT", "47801"))
 IDLE_DISCONNECT = 10.0
 RECONNECT_DELAY = 5.0
+ACCENT_FACTOR = 3  # во сколько раз сильная доля длиннее обычной
 
 
 class MetroService:
@@ -105,7 +106,7 @@ class MetroService:
             self.last_alive = time.monotonic()
         elif parts[0] == "beat" and len(parts) >= 3:
             self.last_alive = time.monotonic()
-            ms = int(parts[1]) * (2 if parts[2] == "1" else 1)
+            ms = int(parts[1]) * (ACCENT_FACTOR if parts[2] == "1" else 1)
             try:
                 self.beats.put_nowait(ms)
             except queue.Full:
