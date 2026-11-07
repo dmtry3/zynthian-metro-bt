@@ -1,7 +1,8 @@
 # Сервис metro_bt: принимает доли от плагина (UDP 127.0.0.1:47801) и вибрирует браслетом.
 #
 # Сообщения от плагина:
-#   alive              плагин в цепочке (раз в секунду)
+#   alive [<транспорт> <BPM*100> <позиций>]  плагин в цепочке (раз в секунду): идёт ли транспорт,
+#                      темп и сколько time:Position плагин получил от хоста (для лога)
 #   beat <мс> <акцент> доля: вибрация на <мс>, при акценте в ACCENT_FACTOR раз длиннее
 #   off                метроном выключен: сразу остановить вибрацию
 #   bye                плагин убрали из цепочки
@@ -38,6 +39,7 @@ class MetroService:
         self.client = None
         self.last_alive = 0.0
         self.beats = queue.Queue(maxsize=4)
+        self.host_state = None
 
     # ---------- связь с браслетом ----------
 
@@ -104,6 +106,14 @@ class MetroService:
             return
         if parts[0] == "alive":
             self.last_alive = time.monotonic()
+            if len(parts) >= 4:
+                rolling, bpm100, npos = parts[1] == "1", int(parts[2]), int(parts[3])
+                state = (rolling, bpm100, npos > 0)
+                if state != self.host_state:
+                    self.host_state = state
+                    log.info("плагин: транспорт %s, %.2f BPM, %s", "идёт" if rolling else "стоит",
+                             bpm100 / 100.0, "позиция от хоста приходит (%d)" % npos if npos
+                             else "позиция от хоста НЕ приходит")
         elif parts[0] == "beat" and len(parts) >= 3:
             self.last_alive = time.monotonic()
             ms = int(parts[1]) * (ACCENT_FACTOR if parts[2] == "1" else 1)

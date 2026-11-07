@@ -76,6 +76,15 @@ class TestService(unittest.TestCase):
         self.assertEqual([c[0] for c in calls], [True, False])
         self.assertLess(calls[1][1] - calls[0][1], 0.15)
 
+    def test_alive_with_host_state(self):
+        with self.assertLogs("metro_bt", "INFO") as cm:
+            self.s._on_message("alive 1 9950 12")
+            self.s._on_message("alive 1 9950 13")   # то же состояние: в лог не пишем
+            self.s._on_message("alive 0 9950 14")
+        self.assertEqual(len(cm.output), 2)
+        self.assertIn("99.50 BPM", cm.output[0])
+        self.assertIn("стоит", cm.output[1])
+
     def test_disconnect_when_plugin_gone(self):
         self.s._on_message("alive")
         self.wait_connected()

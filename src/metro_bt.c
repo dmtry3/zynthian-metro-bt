@@ -50,6 +50,8 @@ typedef struct {
   Ev q[QSIZE];
   atomic_uint qw, qr;
   atomic_int quit;
+  /* для диагностики: что плагин видит от хоста (пишет run(), читает поток, шлёт в alive) */
+  atomic_int st_rolling, st_bpm100, st_npos;
   pthread_t thr;
   int thr_ok;
 } Metro;
@@ -84,7 +86,11 @@ static void* sender(void* arg) {
     }
     if (++tick >= ALIVE_EVERY) {
       tick = 0;
-      if (s >= 0) sendto(s, "alive", 5, 0, (struct sockaddr*)&a, sizeof a);
+      int n = snprintf(msg, sizeof msg, "alive %d %d %d",
+                       atomic_load_explicit(&M->st_rolling, memory_order_relaxed),
+                       atomic_load_explicit(&M->st_bpm100, memory_order_relaxed),
+                       atomic_load_explicit(&M->st_npos, memory_order_relaxed));
+      if (s >= 0) sendto(s, msg, (size_t)n, 0, (struct sockaddr*)&a, sizeof a);
     }
     nanosleep(&ts, NULL);
   }
@@ -116,6 +122,7 @@ static void handle_pos(Metro* M, const LV2_Atom_Object* obj) {
   const LV2_Atom *bpm = NULL, *speed = NULL, *bb = NULL, *bar = NULL, *bpb = NULL;
   lv2_atom_object_get(obj, M->time_bpm, &bpm, M->time_speed, &speed, M->time_barBeat, &bb,
                       M->time_bar, &bar, M->time_bpb, &bpb, 0);
+  atomic_fetch_add_explicit(&M->st_npos, 1, memory_order_relaxed);
   if (bpm) { double v = numv(M, bpm, M->bpm); if (v >= 20 && v <= 400) M->bpm = v; }
   int nbpb = bpb ? (int)(numv(M, bpb, 4) + 0.5) : M->core.bpb;
   if (speed) {
@@ -124,6 +131,8 @@ static void handle_pos(Metro* M, const LV2_Atom_Object* obj) {
     if (!rolling && M->rolling && M->core.on) { Ev e = { EV_OFF, 0, 0 }; push(M, e); }   /* стоп: гасим вибрацию */
     M->rolling = rolling;
   }
+  atomic_store_explicit(&M->st_rolling, M->rolling, memory_order_relaxed);
+  atomic_store_explicit(&M->st_bpm100, (int)(M->bpm * 100 + 0.5), memory_order_relaxed);
   /* транспорт стоит: позиция замерла, долей нет */
   if (!M->rolling || !bar || !bb) { if (nbpb >= 1 && nbpb <= 32) M->core.bpb = nbpb; return; }
   metro_locate(&M->core, numv(M, bar, 0) * nbpb + numv(M, bb, 0), nbpb);
@@ -193,6 +202,7 @@ static LV2_Handle instantiate(const LV2_Descriptor* d, double rate, const char* 
   M->sr = rate; M->bpm = 120.0;
   metro_init(&M->core);
   atomic_init(&M->qw, 0); atomic_init(&M->qr, 0); atomic_init(&M->quit, 0);
+  atomic_init(&M->st_rolling, 0); atomic_init(&M->st_bpm100, 12000); atomic_init(&M->st_npos, 0);
   M->thr_ok = pthread_create(&M->thr, NULL, sender, M) == 0;
   return M;
 }

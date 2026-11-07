@@ -83,7 +83,7 @@ static int recv_all(int s, int ms_total, int* beats, int* accents, int* offs, in
       unsigned ms, down;
       if (sscanf(buf, "beat %u %u", &ms, &down) == 2) { (*beats)++; if (down) (*accents)++; }
       else if (!strcmp(buf, "off")) (*offs)++;
-      else if (!strcmp(buf, "alive")) (*alive)++;
+      else if (!strncmp(buf, "alive", 5)) (*alive)++;
     }
   }
   return 0;
