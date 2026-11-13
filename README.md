@@ -5,7 +5,7 @@
 Метроном Zynthian на браслете Xiaomi Smart Band 10: каждая доля приходит вибрацией.
 Удобно на сцене и в наушниках: темп чувствуешь рукой, клик не нужен.
 
-Видео: https://youtu.be/12LIlUnqwzE
+[![Видео на YouTube](https://img.youtube.com/vi/12LIlUnqwzE/hqdefault.jpg)](https://youtu.be/12LIlUnqwzE)
 
 Проверено на Zynthian V5 (Raspberry Pi 5, Debian bookworm) с Xiaomi Smart Band 10.
 Сам Zynthian не меняется: ставится LV2-плагин и отдельный сервис.
