@@ -40,7 +40,7 @@ class TestService(unittest.TestCase):
         service.IDLE_DISCONNECT = 0.5
         fd, self.cfg = tempfile.mkstemp(suffix=".json")
         with os.fdopen(fd, "w") as f:
-            json.dump({"mac": "04:34:C3:A1:52:FF", "authkey": "00" * 16}, f)
+            json.dump({"mac": "AA:BB:CC:DD:EE:FF", "authkey": "00" * 16}, f)
         self.s = service.MetroService(self.cfg)
         threading.Thread(target=self.s._link_loop, daemon=True).start()
         threading.Thread(target=self.s._buzz_loop, daemon=True).start()

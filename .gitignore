@@ -6,3 +6,7 @@ __pycache__/
 build/
 build_test/
 scripts/deploy.env
+
+# Локальные заметки для ассистента: только у себя
+CLAUDE.md
+.claude/
