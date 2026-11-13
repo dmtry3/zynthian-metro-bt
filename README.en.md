@@ -5,6 +5,8 @@ English · [Русский](README.md)
 A Zynthian metronome on your wrist: every beat arrives as a vibration on a Xiaomi Smart Band 10.
 Handy on stage or with in-ear monitors: you feel the tempo instead of hearing a click.
 
+Video: https://youtu.be/12LIlUnqwzE
+
 Tested on Zynthian V5 (Raspberry Pi 5, Debian bookworm) with a Xiaomi Smart Band 10.
 Zynthian itself is not modified: you install an LV2 plugin and a separate service.
 
